@@ -3,12 +3,13 @@
 
 这个脚本用于把模型结果整理成作品集展示材料：
 
-1. 从 `结果/新东方学生流失预警结果.csv` 读取完整预警明细
-2. 导出风险分布、命中情况、原因标签、科目/年级风险等数据表
-3. 生成可放入 README 和 notebook 的项目展示图表
+1. 从 `src/新东方学生流失预警结果.csv` 或手动指定路径读取完整预警明细
+2. 导出风险分布、命中情况、原因标签、科目/年级风险等数据表到 `data/tables`
+3. 生成可放入 README 和 notebook 的项目展示图表到 `images`
 
 运行方式：
     python 新东方学生流失预警与干预分析.py
+    python 新东方学生流失预警与干预分析.py --result src/新东方学生流失预警结果.csv
 """
 
 from pathlib import Path
@@ -18,13 +19,10 @@ import pandas as pd
 
 
 BASE_DIR = Path(__file__).resolve().parent
-RESULT_DIR = BASE_DIR / "结果"
-OUTPUT_DIR = BASE_DIR / "分析输出"
-TABLE_DIR = OUTPUT_DIR / "数据表"
-CHART_DIR = OUTPUT_DIR / "图表"
-
-ALERT_RESULT_PATH = RESULT_DIR / "新东方学生流失预警结果.csv"
-SUMMARY_XLSX_PATH = RESULT_DIR / "新东方学生流失预警模型输出汇总表.xlsx"
+PROJECT_ROOT = BASE_DIR.parent
+TABLE_DIR = PROJECT_ROOT / "data" / "tables"
+CHART_DIR = PROJECT_ROOT / "images"
+DEFAULT_ALERT_RESULT_PATH = BASE_DIR / "新东方学生流失预警结果.csv"
 
 RISK_ORDER = ["高风险", "中风险", "低风险"]
 RISK_COLORS = {
@@ -57,10 +55,28 @@ def ensure_dirs():
     CHART_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_alert_result():
-    if not ALERT_RESULT_PATH.exists():
-        raise FileNotFoundError(f"找不到预警结果文件：{ALERT_RESULT_PATH}")
-    return pd.read_csv(ALERT_RESULT_PATH)
+def resolve_alert_result_path(result_path=None):
+    if result_path:
+        candidate = Path(result_path).expanduser()
+        if candidate.exists():
+            return candidate.resolve()
+        raise FileNotFoundError(f"找不到预警结果文件：{candidate.resolve()}")
+
+    candidates = [
+        DEFAULT_ALERT_RESULT_PATH,
+        PROJECT_ROOT / "data" / "新东方学生流失预警结果.csv",
+        Path.cwd() / "新东方学生流失预警结果.csv",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+
+    searched = "\n".join(str(candidate.resolve()) for candidate in candidates)
+    raise FileNotFoundError(f"找不到预警结果文件，已尝试以下位置：\n{searched}")
+
+
+def load_alert_result(result_path=None):
+    return pd.read_csv(resolve_alert_result_path(result_path))
 
 
 def percent(series):
@@ -336,10 +352,10 @@ def export_charts(df, tables):
     plot_probability_priority(df)
 
 
-def main():
+def main(result_path=None):
     configure_plot_style()
     ensure_dirs()
-    df = load_alert_result()
+    df = load_alert_result(result_path)
     tables = export_tables(df)
     export_charts(df, tables)
 
@@ -351,4 +367,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--result", type=Path, default=None)
+    args = parser.parse_args()
+
+    main(args.result)
